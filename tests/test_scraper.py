@@ -1,21 +1,22 @@
-from unittest.mock import MagicMock, patch
+﻿from unittest.mock import MagicMock, patch
 
 from scraper import fill_isbn_and_original_titles, get_isbn_from_book_page, scrape_books
 
 
 @patch("scraper.book_details.WebDriverWait")
 def test_get_isbn_from_book_page_valid_url(mock_wait, mock_driver):
-    mock_wait.return_value.until.return_value = MagicMock()
-
     isbn_meta = MagicMock()
     isbn_meta.get_attribute.return_value = "9781234567890"
+
     details_section = MagicMock()
     details_section.get_attribute.return_value = """
-    <dt>Tytuł oryginału:</dt>
+    <dt>Tytu\u0142 orygina\u0142u:</dt>
     <dd>Original Book Title</dd>
     """
 
-    mock_driver.find_element.side_effect = [isbn_meta, details_section]
+    mock_wait.return_value.until.side_effect = [MagicMock(), details_section]
+    mock_driver.find_element.return_value = isbn_meta
+
     isbn, original_title = get_isbn_from_book_page(mock_driver, "http://example.com/book")
 
     assert isbn == "9781234567890"
@@ -44,7 +45,7 @@ def test_fill_isbn_and_original_titles(mock_get_isbn, mock_chrome, sample_books)
     assert enriched_books[0].isbn == "9781234567890"
     assert enriched_books[0].title == "Original Title 1"
     assert enriched_books[1].isbn == "9780987654321"
-    assert enriched_books[1].title == "Tytuł Polski 2"
+    assert enriched_books[1].title == sample_books[1].polish_title
 
     mock_get_isbn.assert_any_call(mock_driver, "http://example.com/book1")
     mock_get_isbn.assert_any_call(mock_driver, "http://example.com/book2")
@@ -52,20 +53,20 @@ def test_fill_isbn_and_original_titles(mock_get_isbn, mock_chrome, sample_books)
 
 @patch("scraper.profile_scraper.webdriver.Chrome")
 @patch("scraper.profile_scraper.WebDriverWait")
-@patch("scraper.profile_scraper.time")
-def test_scrape_books(mock_time, mock_wait, mock_chrome):
+@patch("scraper.profile_scraper.time.sleep")
+def test_scrape_books(mock_sleep, mock_wait, mock_chrome):
     mock_driver = MagicMock()
     mock_chrome.return_value = mock_driver
     mock_wait.return_value.until.return_value = MagicMock()
 
     book1 = MagicMock()
     book1.get_attribute.return_value = "listBookElement1"
-    book1.text = "Tytuł Polski 1\nAutor 1"
+    book1.text = "Tytul Polski 1\nAutor 1"
 
     def find_element_side_effect(by, value):
         if value == "authorAllBooks__singleTextTitle":
             m = MagicMock()
-            m.text = "Tytuł Polski 1"
+            m.text = "Tytul Polski 1"
             return m
         if value == "authorAllBooks__singleTextAuthor":
             m = MagicMock()
@@ -73,7 +74,7 @@ def test_scrape_books(mock_time, mock_wait, mock_chrome):
             return m
         if value == "authorAllBooks__read-dates":
             m = MagicMock()
-            m.text = "Przeczytał: 2023-01-01"
+            m.text = "Przeczytal: 2023-01-01"
             return m
         if value == "listLibrary__ratingAll":
             m = MagicMock()
@@ -114,7 +115,7 @@ def test_scrape_books(mock_time, mock_wait, mock_chrome):
 
     assert len(books) == 1
     assert books[0].book_id == "1"
-    assert books[0].polish_title == "Tytuł Polski 1"
+    assert books[0].polish_title == "Tytul Polski 1"
     assert books[0].author == "Autor 1"
     assert books[0].link == "http://example.com/book1"
     mock_chrome.assert_called_once()
