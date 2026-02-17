@@ -1,70 +1,128 @@
-# Web Scraper using Selenium
+# Lubimyczytac Scraper to Goodreads Pipeline
 
-Python scraper for collecting books from a public Lubimyczytac.pl profile and exporting data to CSV, including a Goodreads-compatible file.
+A Selenium-based data pipeline that reads a public Lubimyczytac profile library, enriches book records with per-book metadata, and exports a Goodreads-compatible CSV.
 
-## Supported Site
+## Scope
 
-- Lubimyczytac.pl profile library pages
+- Source: public Lubimyczytac profile library pages
+- Output: normalized local CSV files, including Goodreads import format
 
-## Tech Stack
+## Stack
 
 - Python 3
-- Selenium
-- ChromeDriver
+- Selenium + ChromeDriver
 - pytest
+- uv (environment and dependency management)
 
-## Project Structure
+## Project Layout
 
 ```text
-
+.
+|-- scraper/
+|   |-- profile_scraper.py   # phase 1: list scraping from profile pages
+|   |-- enrichment.py        # phase 2: per-book enrichment orchestration
+|   |-- book_details.py      # phase 2: ISBN/original title extraction
+|   `-- __init__.py
+|-- dane/
+|   |-- books.csv            # phase 1 output
+|   |-- books_enriched.csv   # phase 2 output
+|   `-- goodreads.csv        # phase 3 output
+|-- tests/
+|-- main.py                  # pipeline entry point
+|-- table_utils.py           # CSV I/O + Goodreads mapping
+|-- config.ini
+`-- pyproject.toml
 ```
 
-## Installation
+## Setup (uv)
 
-1. Clone the repository.
-2. Install dependencies:
+1. Install `uv` (if missing):
 
 ```bash
-pip install -r requirements.txt
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-3. Install Chrome and a matching ChromeDriver available in PATH.
+2. Sync dependencies:
+
+```bash
+uv sync
+```
+
+Install all dependency groups (including `dev`, e.g. `pytest`) when needed:
+
+```bash
+uv sync --all-groups
+```
+
+3. Ensure Google Chrome and a compatible ChromeDriver are available in `PATH`.
 
 ## Configuration
 
-Edit `config.ini`:
+Set your profile URL in `config.ini`:
 
 ```ini
 [settings]
 profile_url = https://lubimyczytac.pl/profil/YOUR_PROFILE/
 ```
 
-## Usage
+## Pipeline Phases
 
-Run:
+### Phase 1: Profile Scraping
+
+- Module: `scraper/profile_scraper.py`
+- Entry function: `scrape_books(profile_url)`
+- Input:
+  - `profile_url` from `config.ini` (expanded in `main.py` with list query parameters)
+- Processing:
+  - Opens profile library pages in Selenium
+  - Iterates pagination
+  - Extracts row-level metadata (title, author, ratings, shelves, link, etc.)
+- Output file:
+  - `dane/books.csv` via `save_books_to_csv(...)`
+
+### Phase 2: Record Enrichment
+
+- Modules: `scraper/enrichment.py`, `scraper/book_details.py`
+- Entry function: `fill_isbn_and_original_titles(books)`
+- Input file:
+  - `dane/books.csv` loaded by `load_books_from_csv(...)`
+- Processing:
+  - Visits each book URL from column `Link`
+  - Extracts ISBN and original title from the book detail page
+  - Fills missing original title fallback with the Polish title
+- Output file:
+  - `dane/books_enriched.csv` via `save_books_to_csv(...)`
+
+### Phase 3: Goodreads Conversion
+
+- Module: `table_utils.py`
+- Entry function: `convert_books_to_goodreads(input_file, output_file)`
+- Input file:
+  - `dane/books_enriched.csv`
+- Processing:
+  - Maps Lubimyczytac columns to Goodreads import schema
+  - Writes Goodreads-required headers and transformed rows
+- Output file:
+  - `dane/goodreads.csv`
+
+## Running
+
+Run the pipeline entry point:
 
 ```bash
-python main.py
+uv run python main.py
 ```
 
-Current default flow in `main.py` expects `dane/books.csv` to already exist, then enriches it and generates `dane/goodreads.csv`.
+Current default flow in `main.py` executes phases 2 and 3 (expects `dane/books.csv` to already exist). Phase 1 lines are present and can be enabled in code.
 
-## Testing
-
-Run tests with:
+## Tests
 
 ```bash
-python -m pytest -v
+uv run pytest -v
 ```
 
-If `pytest` is missing:
+## Phase Artifacts Summary
 
-```bash
-pip install pytest
-```
-
-## Output Files
-
-- `dane/books.csv`: scraped profile books
-- `dane/books_enriched.csv`: records enriched with ISBN/original title
-- `dane/goodreads.csv`: Goodreads import format
+- `dane/books.csv`: raw list scrape from profile pages (phase 1)
+- `dane/books_enriched.csv`: per-book ISBN and original title enrichment (phase 2)
+- `dane/goodreads.csv`: Goodreads import-ready export (phase 3)
