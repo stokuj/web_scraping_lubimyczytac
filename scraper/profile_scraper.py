@@ -5,15 +5,106 @@ This module contains functions for navigating through a user's book list
 and extracting detailed information about each book.
 """
 
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import TimeoutException
+import re
 import time
 
-def scrape_books(profile_url):
+from selenium import webdriver
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+from models import Book
+
+
+STANDARD_SHELVES = {
+    "Przeczytane",
+    "Teraz czytam",
+    "Chce przeczytac",
+    "Chcę przeczytać",
+}
+
+
+def _clean_text(value):
+    if isinstance(value, str):
+        return value.strip()
+    return ""
+
+
+def _safe_element_text(element):
+    text = _clean_text(getattr(element, "text", ""))
+    if text:
+        return text
+    try:
+        return _clean_text(element.get_attribute("textContent"))
+    except Exception:
+        return ""
+
+
+def _first_text(book, locators):
+    for by, value in locators:
+        try:
+            element = book.find_element(by, value)
+        except Exception:
+            continue
+
+        text = _safe_element_text(element)
+        if text:
+            return text
+    return ""
+
+
+def _get_card_lines(driver, book):
+    raw = _clean_text(book.text)
+    if raw:
+        return [line.strip() for line in raw.splitlines() if line.strip()]
+
+    # Some cards return empty .text even when content exists in the DOM.
+    try:
+        raw = _clean_text(
+            driver.execute_script(
+                "return arguments[0].innerText || arguments[0].textContent || '';",
+                book,
+            )
+        )
+    except Exception:
+        raw = ""
+
+    return [line.strip() for line in raw.splitlines() if line.strip()]
+
+
+def _is_metadata_line(line):
+    lower = line.lower()
+    if lower.startswith("cykl:"):
+        return True
+    if "ocen" in lower:
+        return True
+    if lower.startswith("czytelnicy:") or lower.startswith("opinie:"):
+        return True
+    if lower.startswith("przeczyta"):
+        return True
+    if line in STANDARD_SHELVES:
+        return True
+    if re.match(r"^\d+[,.]\d$", line):
+        return True
+    return False
+
+
+def _is_ui_noise_line(line):
+    lower = line.lower()
+    noise_markers = [
+        "na półkach",
+        "na p\u00f3\u0142kach",
+        "dodaj na p\u00f3\u0142k",
+        "dodaj na półk",
+        "kup ksi\u0105\u017ck",
+        "kup książk",
+        "/ 10",
+    ]
+    return any(marker in lower for marker in noise_markers)
+
+
+def scrape_books(profile_url, log_every=20):
     """
     Scrape book data from a user's profile on Lubimyczytac.pl.
 
@@ -22,170 +113,271 @@ def scrape_books(profile_url):
 
     Args:
         profile_url (str): URL of the user's profile page
+        log_every (int): Print progress every N scraped books
 
     Returns:
-        list: A list of lists, where each inner list contains data for one book
-              with the following fields:
-              [book_id, title, author, isbn, cycle, avg_rating, rating_count,
-               readers, opinions, user_rating, book_link, read_date,
-               shelves, self_shelves, original_title]
+        list: A list of Book objects.
     """
-    # Initialize Chrome WebDriver
     chrome_options = Options()
-    # chrome_options.add_argument("--headless=new")  # Headless mode if needed
     driver = webdriver.Chrome(options=chrome_options)
     driver.get(profile_url)
 
-    # Akceptacja ciasteczek, jeśli przycisk się pojawi
+    started_at = time.time()
+    page_no = 0
+    total_books = 0
+    debug_dumped = False
+    print("[Phase 1] Starting profile scraping...")
+
+    # Cookie consent if available.
     try:
         accept_btn = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.XPATH, '//button[contains(text(), "Akcept")]'))
         )
         time.sleep(1)
         accept_btn.click()
-    except:
-        print("Nie znaleziono przycisku akceptacji ciasteczek.")
+    except Exception:
+        print("[Phase 1] Cookie consent button not found.")
 
     all_books = []
 
     while True:
-        # Czekaj aż książki się załadują
+        page_no += 1
         try:
-            WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.CLASS_NAME, 'authorAllBooks__single'))
+            WebDriverWait(driver, 6).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "authorAllBooks__single"))
             )
         except TimeoutException:
-            print("Brak książek na stronie — zakończono zbieranie.")
+            print("[Phase 1] No books found on page, stopping.")
             break
 
-        books = driver.find_elements(By.CLASS_NAME, 'authorAllBooks__single')
+        books = driver.find_elements(By.CLASS_NAME, "authorAllBooks__single")
+        page_books = 0
 
         for book in books:
-            # ID książki
+            card_lines = _get_card_lines(driver, book)
+
+            # ID
             try:
-                book_id = book.get_attribute('id').replace('listBookElement', '')
-            except:
-                book_id = ''
+                book_id = _clean_text(book.get_attribute("id")).replace("listBookElement", "")
+            except Exception:
+                book_id = ""
 
-            # Tytuł
+            # Link
+            book_link = ""
             try:
-                title_element = book.find_element(By.CLASS_NAME, 'authorAllBooks__singleTextTitle')
-                title = title_element.text
-                if isinstance(title, str):
-                    title = title.strip()
-            except:
-                title = ''
+                anchors = book.find_elements(By.XPATH, './/a[contains(@href, "/ksiazka/")]')
+                if anchors:
+                    book_link = _clean_text(anchors[0].get_attribute("href"))
+            except Exception:
+                book_link = ""
 
-            # Autor
+            if not book_link:
+                try:
+                    book_link = _clean_text(book.find_element(By.TAG_NAME, "a").get_attribute("href"))
+                except Exception:
+                    book_link = ""
+
+            # Title and author
+            title = _first_text(
+                book,
+                [
+                    (By.CLASS_NAME, "authorAllBooks__singleTextTitle"),
+                    (By.CSS_SELECTOR, '[class*="singleTextTitle"]'),
+                    (By.CSS_SELECTOR, '[class*="listLibrary__title"]'),
+                ],
+            )
+            author = _first_text(
+                book,
+                [
+                    (By.CLASS_NAME, "authorAllBooks__singleTextAuthor"),
+                    (By.CSS_SELECTOR, '[class*="singleTextAuthor"]'),
+                    (By.CSS_SELECTOR, '[class*="listLibrary__author"]'),
+                ],
+            )
+
+            # Ratings and cycle
+            cycle = ""
+            avg_rating = ""
+            user_rating = ""
+            rating_count = ""
             try:
-                author = book.find_element(By.CLASS_NAME, 'authorAllBooks__singleTextAuthor').text.strip()
-            except:
-                author = ''
+                cycle_elem = book.find_elements(By.CLASS_NAME, "listLibrary__info--cycles")
+                cycle = _safe_element_text(cycle_elem[0]) if cycle_elem else ""
+                if cycle.lower().startswith("cykl:"):
+                    cycle = cycle.split(":", 1)[1].strip()
+            except Exception:
+                cycle = ""
 
-            # Link do książki
             try:
-                book_link = book.find_element(By.TAG_NAME, "a").get_attribute("href")
-            except:
-                book_link = ''
+                rating_elements = book.find_elements(By.CLASS_NAME, "listLibrary__rating")
+                if rating_elements:
+                    avg_rating = _safe_element_text(
+                        rating_elements[0].find_element(By.CLASS_NAME, "listLibrary__ratingStarsNumber")
+                    )
+                if len(rating_elements) > 1:
+                    user_rating = _safe_element_text(
+                        rating_elements[1].find_element(By.CLASS_NAME, "listLibrary__ratingStarsNumber")
+                    )
+            except Exception:
+                pass
 
-            # ISBN
-            isbn = '' # Tymczasowo pusty, będzie uzupełniony później
-
-            # Oryginalny tytuł
-            original_title = '' # Tymczasowo pusty, będzie uzupełniony później
-
-            # Cykl
             try:
-                cycle_elem = book.find_elements(By.CLASS_NAME, 'listLibrary__info--cycles')
-                cycle = cycle_elem[0].text[6:] if cycle_elem and len(cycle_elem[0].text) > 6 else ''
-            except:
-                cycle = ''
+                rating_count = _safe_element_text(book.find_element(By.CLASS_NAME, "listLibrary__ratingAll"))
+                rating_count = rating_count.replace("ocen", "").strip()
+            except Exception:
+                rating_count = ""
 
-            # Średnia ocena
+            # Readers and opinions
+            readers = ""
+            opinions = ""
             try:
-                rating_elements = book.find_elements(By.CLASS_NAME, 'listLibrary__rating')
-                avg_rating = rating_elements[0].find_element(
-                    By.CLASS_NAME, 'listLibrary__ratingStarsNumber'
-                ).text.strip()
-            except:
-                avg_rating = ''
+                for ro in book.find_elements(By.CLASS_NAME, "small.grey"):
+                    text = _safe_element_text(ro)
+                    if "Czytelnicy:" in text:
+                        readers = text.replace("Czytelnicy:", "").strip()
+                    elif "Opinie:" in text:
+                        opinions = text.replace("Opinie:", "").strip()
+            except Exception:
+                pass
 
-            # Ocena użytkownika
+            # Read date
             try:
-                user_rating = rating_elements[1].find_element(
-                    By.CLASS_NAME, 'listLibrary__ratingStarsNumber'
-                ).text.strip()
-            except:
-                user_rating = ''
+                read_date_elem = book.find_element(By.CLASS_NAME, "authorAllBooks__read-dates")
+                read_date = _safe_element_text(read_date_elem)
+                read_date = read_date.replace("Przeczytał:", "").replace("Przeczytal:", "").strip()
+            except Exception:
+                read_date = ""
 
-            # Liczba ocen
+            # Shelves
+            shelves = ""
+            self_shelves = ""
             try:
-                rating_count = book.find_element(
-                    By.CLASS_NAME, 'listLibrary__ratingAll'
-                ).text.replace('ocen', '').strip()
-            except:
-                rating_count = ''
+                shelf_elem = book.find_element(By.CLASS_NAME, "authorAllBooks__singleTextShelfRight")
+                all_shelf_names = [
+                    _clean_text(a.text)
+                    for a in shelf_elem.find_elements(By.TAG_NAME, "a")
+                    if _clean_text(a.text)
+                ]
+                shelves = ", ".join([s for s in all_shelf_names if s in STANDARD_SHELVES])
+                self_shelves = ", ".join([s for s in all_shelf_names if s not in STANDARD_SHELVES])
+            except Exception:
+                pass
 
-            # Liczba czytelników i liczba opinii
-            try:
-                for ro in book.find_elements(By.CLASS_NAME, 'small.grey'):
-                    text = ro.text.strip()
-                    if 'Czytelnicy:' in text:
-                        readers = text.replace('Czytelnicy:', '').strip()
-                    elif 'Opinie:' in text:
-                        opinions = text.replace('Opinie:', '').strip()
-            except:
-                readers = ''
-                opinions = '' # zostają domyślne puste stringi
+            # Fallback parse from card lines.
+            if card_lines:
+                if not cycle:
+                    for line in card_lines:
+                        if line.lower().startswith("cykl:"):
+                            cycle = line.split(":", 1)[1].strip()
+                            break
 
-            # Data przeczytania
-            try:
-                read_date_elem = book.find_element(By.CLASS_NAME, 'authorAllBooks__read-dates')
-                read_date = read_date_elem.text.replace('Przeczytał:', '').strip()
-            except:
-                read_date = '' # zostają domyślne puste stringi
+                if not rating_count:
+                    for line in card_lines:
+                        if "ocen" in line.lower():
+                            rating_count = line.lower().replace("ocen", "").strip()
+                            break
 
-            # Półki (shelves) oraz półki użytkownika (self_shelves)
-            try:
-                shelf_elem = book.find_element(By.CLASS_NAME, 'authorAllBooks__singleTextShelfRight')
-                all_shelf_names = [a.text.strip() for a in shelf_elem.find_elements(By.TAG_NAME, 'a')]
+                if not readers:
+                    for line in card_lines:
+                        if line.startswith("Czytelnicy:"):
+                            readers = line.replace("Czytelnicy:", "").strip()
+                            break
 
-                standard_shelves = {"Przeczytane", "Teraz czytam", "Chcę przeczytać"}
-                shelves = ', '.join([s for s in all_shelf_names if s in standard_shelves])
-                self_shelves = ', '.join([s for s in all_shelf_names if s not in standard_shelves])
-            except:
-                shelves = ''
-                self_shelves = ''
+                if not opinions:
+                    for line in card_lines:
+                        if line.startswith("Opinie:"):
+                            opinions = line.replace("Opinie:", "").strip()
+                            break
 
+                if not read_date:
+                    for line in card_lines:
+                        if line.lower().startswith("przeczyta"):
+                            read_date = line.split(":", 1)[1].strip() if ":" in line else ""
+                            break
 
-            # Dodaj dane o książce do listy
-            all_books.append([
-                book_id,               # ID
-                title,                 # Tytuł
-                author,                # Autor
-                isbn,                  # ISBN
-                cycle,                 # Cykl
-                avg_rating,            # Średnia ocena
-                rating_count,          # Liczba ocen
-                readers,               # Czytelnicy
-                opinions,              # Opinie
-                user_rating,           # Ocena użytkownika
-                book_link,             # Link
-                read_date,             # Data przeczytania
-                shelves,               # Na półkach Główne
-                self_shelves,          # Na półkach Pozostałe
-                original_title         # Polski Tytuł (czyli na końcu!)
-            ])
+                rating_candidates = [line for line in card_lines if re.match(r"^\d+[,.]\d$", line)]
+                if not avg_rating and rating_candidates:
+                    avg_rating = rating_candidates[0]
+                if not user_rating and len(rating_candidates) > 1:
+                    user_rating = rating_candidates[1]
 
-        # Przejście do następnej strony
+                if not shelves:
+                    found_standard = [line for line in card_lines if line in STANDARD_SHELVES]
+                    if found_standard:
+                        shelves = ", ".join(dict.fromkeys(found_standard))
+                # Do not infer self_shelves from raw card lines.
+                # It produces UI noise like "Na półkach", "KUP KSIĄŻKĘ", ratings etc.
+
+                content_lines = [line for line in card_lines if not _is_metadata_line(line)]
+                if not title and content_lines:
+                    title = content_lines[0]
+                if not author and len(content_lines) > 1:
+                    author = content_lines[1]
+
+            if self_shelves:
+                cleaned = []
+                for part in [p.strip() for p in self_shelves.split(",") if p.strip()]:
+                    if not _is_ui_noise_line(part):
+                        cleaned.append(part)
+                self_shelves = ", ".join(dict.fromkeys(cleaned))
+
+            # Last fallback for title from URL slug.
+            if not title and book_link:
+                try:
+                    slug = book_link.rstrip("/").rsplit("/", 1)[-1]
+                    title = slug.replace("-", " ")
+                except Exception:
+                    pass
+
+            if (not title and not author) and (not debug_dumped):
+                print(f"[Phase 1][debug] Empty title/author for first card. Lines: {card_lines[:10]}")
+                debug_dumped = True
+
+            # Filled in phase 2.
+            isbn = ""
+            original_title = ""
+
+            all_books.append(
+                Book(
+                    book_id=book_id,
+                    polish_title=title,
+                    author=author,
+                    isbn=isbn,
+                    cycle=cycle,
+                    avg_rating=avg_rating,
+                    rating_count=rating_count,
+                    readers=readers,
+                    opinions=opinions,
+                    user_rating=user_rating,
+                    link=book_link,
+                    read_date=read_date,
+                    main_shelves=shelves,
+                    other_shelves=self_shelves,
+                    title=original_title,
+                )
+            )
+
+            page_books += 1
+            total_books += 1
+            if log_every and (total_books == 1 or total_books % log_every == 0):
+                elapsed = time.time() - started_at
+                rate = total_books / elapsed if elapsed > 0 else 0
+                print(
+                    f"[Phase 1] page {page_no} | scraped total: {total_books} | "
+                    f"rate: {rate:.2f} books/s"
+                )
+
+        print(f"[Phase 1] page {page_no} done | page books: {page_books} | total: {total_books}")
+
         try:
-            next_button = driver.find_element(By.CLASS_NAME, 'next-page')
-            if 'disabled' in next_button.get_attribute('class'):
+            next_button = driver.find_element(By.CLASS_NAME, "next-page")
+            if "disabled" in _clean_text(next_button.get_attribute("class")):
                 break
             next_button.click()
-            time.sleep(1)  # Poczekaj na załadowanie strony
-        except:
-            break  # Nie ma przycisku lub już ostatnia strona
+            time.sleep(1)
+        except Exception:
+            break
 
     driver.quit()
+    print(f"[Phase 1] Scraping completed in {time.time() - started_at:.1f}s.")
     return all_books

@@ -1,4 +1,4 @@
-# Lubimyczytac Scraper to Goodreads Pipeline
+﻿# Lubimyczytac Scraper to Goodreads Pipeline
 
 A Selenium-based data pipeline that reads a public Lubimyczytac profile library, enriches book records with per-book metadata, and exports a Goodreads-compatible CSV.
 
@@ -6,6 +6,10 @@ A Selenium-based data pipeline that reads a public Lubimyczytac profile library,
 
 - Source: public Lubimyczytac profile library pages
 - Output: normalized local CSV files, including Goodreads import format
+
+## Educational Purpose
+
+This project is intended for educational use only. It is designed to demonstrate web scraping workflow design, CSV data processing, and multi-phase data transformation in Python.
 
 ## Stack
 
@@ -23,6 +27,9 @@ A Selenium-based data pipeline that reads a public Lubimyczytac profile library,
 |   |-- enrichment.py        # phase 2: per-book enrichment orchestration
 |   |-- book_details.py      # phase 2: ISBN/original title extraction
 |   `-- __init__.py
+|-- models/
+|   |-- book.py              # Book dataclass and CSV schema
+|   `-- __init__.py
 |-- dane/
 |   |-- books.csv            # phase 1 output
 |   |-- books_enriched.csv   # phase 2 output
@@ -31,7 +38,8 @@ A Selenium-based data pipeline that reads a public Lubimyczytac profile library,
 |-- main.py                  # pipeline entry point
 |-- table_utils.py           # CSV I/O + Goodreads mapping
 |-- config.ini
-`-- pyproject.toml
+|-- pyproject.toml
+`-- LICENSE
 ```
 
 ## Setup (uv)
@@ -77,8 +85,12 @@ profile_url = https://lubimyczytac.pl/profil/YOUR_PROFILE/
   - Opens profile library pages in Selenium
   - Iterates pagination
   - Extracts row-level metadata (title, author, ratings, shelves, link, etc.)
+  - Produces `Book` objects (domain model) before CSV serialization
 - Output file:
   - `dane/books.csv` via `save_books_to_csv(...)`
+- Shelf fields in this phase:
+  - `Na półkach Główne`: primary state shelf (e.g. `Przeczytane`, `Teraz czytam`, `Chcę przeczytać`)
+  - `Na półkach Pozostałe`: custom user shelves/tags (optional)
 
 ### Phase 2: Record Enrichment
 
@@ -101,6 +113,8 @@ profile_url = https://lubimyczytac.pl/profil/YOUR_PROFILE/
   - `dane/books_enriched.csv`
 - Processing:
   - Maps Lubimyczytac columns to Goodreads import schema
+  - `Na półkach Główne` -> Goodreads `Shelves`
+  - `Na półkach Pozostałe` -> Goodreads `Bookshelves`
   - Writes Goodreads-required headers and transformed rows
 - Output file:
   - `dane/goodreads.csv`
@@ -126,3 +140,17 @@ uv run pytest -v
 - `dane/books.csv`: raw list scrape from profile pages (phase 1)
 - `dane/books_enriched.csv`: per-book ISBN and original title enrichment (phase 2)
 - `dane/goodreads.csv`: Goodreads import-ready export (phase 3)
+
+## License
+
+This project is licensed under the MIT License. See `LICENSE` for details.
+
+
+## Is Na półkach Pozostałe Required?
+
+Short answer: not strictly required for a valid Goodreads import.
+
+- Keep it if you want to preserve custom shelf organization from Lubimyczytac.
+- You can leave it empty and the pipeline still works; Goodreads Bookshelves will be blank.
+- If your goal is only title/author/rating transfer, this field can be treated as optional.
+

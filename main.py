@@ -20,25 +20,21 @@ if __name__ == "__main__":
     profile_url += '/biblioteczka/lista?page=1&listId=booksFilteredList&findString=&kolejnosc=data-dodania&listType=list&objectId=605200&own=0&paginatorType=Standard'
 
     # STEP 1: Scrape book data and save to CSV
-    # Uncomment these lines to scrape books from the user's profile
-    # books = scrape_books(profile_url)
-    # save_books_to_csv(books, 'dane/books.csv')
-    # print(f"Scraped {len(books)} books and saved to 'dane/books.csv'")
+    books = scrape_books(profile_url)
+    save_books_to_csv(books, 'dane/books.csv')
+    print(f"Scraped {len(books)} books and saved to 'dane/books.csv'")
 
-    # STEP 2: Load book data from CSV
-    # Uncomment these lines to load previously scraped books from CSV
+    # STEP 2: 
+    # Load book data from CSV
     books_from_csv = load_books_from_csv('dane/books.csv')
     print(f"Loaded {len(books_from_csv)} books from 'dane/books.csv'")
 
-    # STEP 3: Enrich book data with ISBN and original titles
-    # Uncomment these lines to add ISBN and original titles to book data
+    #Enrich book data with ISBN and original titles
     enriched_books = fill_isbn_and_original_titles(books_from_csv)
 
-    # STEP 4: Save enriched book data to a new CSV file
-    # Uncomment these lines to save the enriched book data
+    #Save enriched book data to a new CSV file
     save_books_to_csv(enriched_books, 'dane/books_enriched.csv')
     print(f"Saved enriched books to 'dane/books_enriched.csv'")
 
-    # STEP 5: Convert book data to Goodreads format
-    # Uncomment this line to convert the enriched book data to Goodreads format
+    #STEP 3: Convert book data to Goodreads format
     convert_books_to_goodreads('dane/books_enriched.csv', 'dane/goodreads.csv')
