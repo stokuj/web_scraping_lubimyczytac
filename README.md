@@ -7,10 +7,6 @@ A Selenium-based data pipeline that reads a public Lubimyczytac profile library,
 - Source: public Lubimyczytac profile library pages
 - Output: normalized local CSV files, including Goodreads import format
 
-## Educational Purpose
-
-This project is intended for educational use only. It is designed to demonstrate web scraping workflow design, CSV data processing, and multi-phase data transformation in Python.
-
 ## Stack
 
 - Python 3
@@ -59,19 +55,10 @@ uv sync
 
 3. Ensure Google Chrome and a compatible ChromeDriver are available in `PATH`.
 
-## Configuration
+## Configuration & Running
 
-Create your local config from the template and set your profile URL:
+Create your local config.ini from the config.example.ini:
 
-```bash
-cp config.example.ini config.ini
-```
-
-On Windows PowerShell:
-
-```powershell
-Copy-Item config.example.ini config.ini
-```
 
 Then edit `config.ini`:
 
@@ -79,8 +66,6 @@ Then edit `config.ini`:
 [settings]
 profile_url = https://lubimyczytac.pl/profil/YOUR_PROFILE_ID/YOUR_PROFILE_NAME
 ```
-
-## Running
 
 Run the pipeline entry point:
 
@@ -138,7 +123,11 @@ uv run python main.py
   - Writes Goodreads-required headers and transformed rows
 - Output file:
   - `dane/goodreads.csv`
-  
+
+## Educational Purpose
+
+This project is intended for educational use only. It is designed to demonstrate web scraping workflow design, CSV data processing, and multi-phase data transformation in Python.
+
 ## License
 
 This project is licensed under the MIT License. See `LICENSE` for details.
