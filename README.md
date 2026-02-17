@@ -15,7 +15,6 @@ This project is intended for educational use only. It is designed to demonstrate
 
 - Python 3
 - Selenium + ChromeDriver
-- pytest
 - uv (environment and dependency management)
 
 ## Project Layout
@@ -58,12 +57,6 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 uv sync
 ```
 
-Install all dependency groups (including `dev`, e.g. `pytest`) when needed:
-
-```bash
-uv sync --all-groups
-```
-
 3. Ensure Google Chrome and a compatible ChromeDriver are available in `PATH`.
 
 ## Configuration
@@ -87,6 +80,19 @@ Then edit `config.ini`:
 profile_url = https://lubimyczytac.pl/profil/YOUR_PROFILE_ID/YOUR_PROFILE_NAME
 ```
 
+## Running
+
+Run the pipeline entry point:
+
+```bash
+uv run python main.py
+```
+
+## Phase Artifacts Summary
+
+- `dane/books.csv`: raw list scrape from profile pages (phase 1)
+- `dane/books_enriched.csv`: per-book ISBN and original title enrichment (phase 2)
+- `dane/goodreads.csv`: Goodreads import-ready export (phase 3)
 ## Pipeline Phases
 
 ### Phase 1: Profile Scraping
@@ -132,39 +138,8 @@ profile_url = https://lubimyczytac.pl/profil/YOUR_PROFILE_ID/YOUR_PROFILE_NAME
   - Writes Goodreads-required headers and transformed rows
 - Output file:
   - `dane/goodreads.csv`
-
-## Running
-
-Run the pipeline entry point:
-
-```bash
-uv run python main.py
-```
-
-Current default flow in `main.py` executes phases 2 and 3 (expects `dane/books.csv` to already exist). Phase 1 lines are present and can be enabled in code.
-
-## Tests
-
-```bash
-uv run pytest -v
-```
-
-## Phase Artifacts Summary
-
-- `dane/books.csv`: raw list scrape from profile pages (phase 1)
-- `dane/books_enriched.csv`: per-book ISBN and original title enrichment (phase 2)
-- `dane/goodreads.csv`: Goodreads import-ready export (phase 3)
-
+  
 ## License
 
 This project is licensed under the MIT License. See `LICENSE` for details.
-
-
-## Is Na półkach Pozostałe Required?
-
-Short answer: not strictly required for a valid Goodreads import.
-
-- Keep it if you want to preserve custom shelf organization from Lubimyczytac.
-- You can leave it empty and the pipeline still works; Goodreads Bookshelves will be blank.
-- If your goal is only title/author/rating transfer, this field can be treated as optional.
 
