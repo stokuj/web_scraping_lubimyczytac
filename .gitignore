@@ -192,3 +192,5 @@ cython_debug/
 .idea/runConfigurations/
 /dane
 AGENTS.md
+config.ini
+config.ini

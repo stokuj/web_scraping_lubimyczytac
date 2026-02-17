@@ -30,14 +30,16 @@ This project is intended for educational use only. It is designed to demonstrate
 |-- models/
 |   |-- book.py              # Book dataclass and CSV schema
 |   `-- __init__.py
+|-- data_io/
+|   |-- csv_utils.py         # CSV read/write and Goodreads export mapping
+|   `-- __init__.py
 |-- dane/
 |   |-- books.csv            # phase 1 output
 |   |-- books_enriched.csv   # phase 2 output
 |   `-- goodreads.csv        # phase 3 output
 |-- tests/
 |-- main.py                  # pipeline entry point
-|-- table_utils.py           # CSV I/O + Goodreads mapping
-|-- config.ini
+|-- config.example.ini
 |-- pyproject.toml
 `-- LICENSE
 ```
@@ -66,11 +68,23 @@ uv sync --all-groups
 
 ## Configuration
 
-Set your profile URL in `config.ini`:
+Create your local config from the template and set your profile URL:
+
+```bash
+cp config.example.ini config.ini
+```
+
+On Windows PowerShell:
+
+```powershell
+Copy-Item config.example.ini config.ini
+```
+
+Then edit `config.ini`:
 
 ```ini
 [settings]
-profile_url = https://lubimyczytac.pl/profil/YOUR_PROFILE/
+profile_url = https://lubimyczytac.pl/profil/YOUR_PROFILE_ID/YOUR_PROFILE_NAME
 ```
 
 ## Pipeline Phases
@@ -107,7 +121,7 @@ profile_url = https://lubimyczytac.pl/profil/YOUR_PROFILE/
 
 ### Phase 3: Goodreads Conversion
 
-- Module: `table_utils.py`
+- Module: `data_io/csv_utils.py`
 - Entry function: `convert_books_to_goodreads(input_file, output_file)`
 - Input file:
   - `dane/books_enriched.csv`

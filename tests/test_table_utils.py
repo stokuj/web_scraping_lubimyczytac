@@ -2,7 +2,7 @@ import csv
 import os
 
 from models import Book
-from table_utils import convert_books_to_goodreads, load_books_from_csv, save_books_to_csv
+from data_io.csv_utils import convert_books_to_goodreads, load_books_from_csv, save_books_to_csv
 
 
 def test_save_and_load_books(sample_books, temp_csv_file):

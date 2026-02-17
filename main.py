@@ -8,7 +8,7 @@ Various processing steps can be enabled or disabled by uncommenting the relevant
 """
 
 from scraper import scrape_books, fill_isbn_and_original_titles
-from table_utils import save_books_to_csv, load_books_from_csv, convert_books_to_goodreads
+from data_io.csv_utils import save_books_to_csv, load_books_from_csv, convert_books_to_goodreads
 import configparser
 
 if __name__ == "__main__":
