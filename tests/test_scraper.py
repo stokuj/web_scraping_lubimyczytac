@@ -1,10 +1,9 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from scrapers.book_scraper import BookScraper
-from models.book import Book
+from scraper import get_isbn_from_book_page, fill_isbn_and_original_titles, scrape_books
 
-@patch('scrapers.book_scraper.WebDriverWait')
-def test_get_book_details_valid_url(mock_wait, mock_driver):
+@patch('scraper.book_details.WebDriverWait')
+def test_get_isbn_from_book_page_valid_url(mock_wait, mock_driver):
     """Test getting ISBN and original title from a valid book page."""
     # Mock WebDriverWait.until to simulate page loading
     mock_wait.return_value.until.return_value = MagicMock()
@@ -22,91 +21,53 @@ def test_get_book_details_valid_url(mock_wait, mock_driver):
     """
     mock_wait.return_value.until.return_value = details_section
 
-    # Create a BookScraper instance and set its driver
-    scraper = BookScraper()
-    scraper.driver = mock_driver
-
-    # Create a Book object with a valid URL
-    book = Book(book_link="http://example.com/book")
-
-    # Call the method
-    result_book = scraper.get_book_details(book)
+    # Call the function
+    isbn, original_title = get_isbn_from_book_page(mock_driver, "http://example.com/book")
 
     # Verify results
-    assert result_book.isbn == "9781234567890"
-    assert result_book.original_title == "Original Book Title"
+    assert isbn == "9781234567890"
+    assert original_title == "Original Book Title"
 
-def test_get_book_details_invalid_url(mock_driver):
+def test_get_isbn_from_book_page_invalid_url(mock_driver):
     """Test getting ISBN and original title from an invalid URL."""
-    # Create a BookScraper instance and set its driver
-    scraper = BookScraper()
-    scraper.driver = mock_driver
-
-    # Create a Book object with an invalid URL
-    book = Book(book_link="", title="Test Title")
-
-    # Mock the behavior of get_book_details for invalid URL
-    # In the actual implementation, original_title is set to 'BRAK' for invalid URLs
-    # and then if original_title is 'BRAK', it's set to the title
-    def mock_get_book_details(book):
-        book.original_title = 'BRAK'
-        if book.original_title == 'BRAK':
-            book.original_title = book.title
-        return book
-
-    # Replace the get_book_details method with our mock
-    scraper.get_book_details = mock_get_book_details
-
-    # Call the method
-    result_book = scraper.get_book_details(book)
+    # Call the function with an invalid URL
+    isbn, original_title = get_isbn_from_book_page(mock_driver, "")
 
     # Verify results
-    assert result_book.isbn == ""
-    assert result_book.original_title == "Test Title"  # Falls back to title when URL is invalid
+    assert isbn == ""
+    assert original_title == "BRAK"
 
-@patch('scrapers.book_scraper.webdriver.Chrome')
-def test_enrich_books(mock_chrome, sample_books):
-    """Test enriching books with ISBN and original titles."""
-    # Convert sample_books to Book objects
-    books = [Book.from_list(book) for book in sample_books]
-
+@patch('scraper.enrichment.webdriver.Chrome')
+@patch('scraper.enrichment.get_isbn_from_book_page')
+def test_fill_isbn_and_original_titles(mock_get_isbn, mock_chrome, sample_books):
+    """Test filling ISBN and original titles for books."""
     # Mock Chrome driver
     mock_driver = MagicMock()
     mock_chrome.return_value = mock_driver
 
-    # Create a BookScraper instance and set its driver
-    scraper = BookScraper()
-    scraper.driver = mock_driver
+    # Mock get_isbn_from_book_page to return different values for each book
+    mock_get_isbn.side_effect = [
+        ("9781234567890", "Original Title 1"),
+        ("9780987654321", "BRAK")
+    ]
 
-    # Mock get_book_details to modify books in place
-    def mock_get_book_details(book):
-        if book.book_link == "http://example.com/book1":
-            book.isbn = "9781234567890"
-            book.original_title = "Original Title 1"
-        elif book.book_link == "http://example.com/book2":
-            book.isbn = "9780987654321"
-            book.original_title = "BRAK"
-            # In the actual implementation, if original_title is 'BRAK', it's set to the title
-            if book.original_title == 'BRAK':
-                book.original_title = book.title
-        return book
-
-    # Replace the get_book_details method with our mock
-    scraper.get_book_details = mock_get_book_details
-
-    # Call the method
-    enriched_books = scraper.enrich_books(books)
+    # Call the function
+    enriched_books = fill_isbn_and_original_titles(sample_books)
 
     # Verify results
-    assert enriched_books[0].isbn == "9781234567890"  # ISBN for first book
-    assert enriched_books[0].original_title == "Original Title 1"  # Original title for first book
-    assert enriched_books[1].isbn == "9780987654321"  # ISBN for second book
-    assert enriched_books[1].original_title == "Tytuł Polski 2"  # Original title for second book (falls back to Polish title)
+    assert enriched_books[0][3] == "9781234567890"  # ISBN for first book
+    assert enriched_books[0][14] == "Original Title 1"  # Original title for first book
+    assert enriched_books[1][3] == "9780987654321"  # ISBN for second book
+    assert enriched_books[1][14] == "Tytuł Polski 2"  # Original title for second book (falls back to Polish title)
 
-@patch('scrapers.book_scraper.webdriver.Chrome')
-@patch('scrapers.book_scraper.WebDriverWait')
-@patch('scrapers.book_scraper.time')
-def test_scrape_profile(mock_time, mock_wait, mock_chrome):
+    # Verify get_isbn_from_book_page was called with correct URLs
+    mock_get_isbn.assert_any_call(mock_driver, "http://example.com/book1")
+    mock_get_isbn.assert_any_call(mock_driver, "http://example.com/book2")
+
+@patch('scraper.profile_scraper.webdriver.Chrome')
+@patch('scraper.profile_scraper.WebDriverWait')
+@patch('scraper.profile_scraper.time')
+def test_scrape_books(mock_time, mock_wait, mock_chrome):
     """Test scraping books from a user's profile."""
     # Mock Chrome driver
     mock_driver = MagicMock()
@@ -172,19 +133,17 @@ def test_scrape_profile(mock_time, mock_wait, mock_chrome):
     next_button.get_attribute.return_value = "disabled"  # Only one page
     mock_driver.find_element.return_value = next_button
 
-    # Create a BookScraper instance and set its driver
-    scraper = BookScraper()
-    scraper.driver = mock_driver
-
-    # Call the method
-    books = scraper.scrape_profile("http://example.com/profile")
+    # Call the function
+    books = scrape_books("http://example.com/profile")
 
     # Verify results
     assert len(books) == 1
-    assert books[0].book_id == "1"  # ID
-    assert books[0].title == "Tytuł Polski 1"  # Title
-    assert books[0].author == "Autor 1"  # Author
-    assert books[0].book_link == "http://example.com/book1"  # Link
+    assert books[0][0] == "1"  # ID
+    assert books[0][1] == "Tytuł Polski 1"  # Title
+    assert books[0][2] == "Autor 1"  # Author
+    assert books[0][10] == "http://example.com/book1"  # Link
 
-    # Verify driver was used correctly
+    # Verify Chrome was initialized and used correctly
+    mock_chrome.assert_called_once()
     mock_driver.get.assert_called_once_with("http://example.com/profile")
+    mock_driver.quit.assert_called_once()

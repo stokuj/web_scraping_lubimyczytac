@@ -5,9 +5,8 @@ def test_example():
 def test_project_imports():
     """Test that all project modules can be imported without errors."""
     try:
-        import models.book
-        import repositories.book_repository
-        import scrapers.book_scraper
+        import scraper
+        import table_utils
         import main
         assert True
     except ImportError as e:
