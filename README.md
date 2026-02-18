@@ -1,4 +1,4 @@
-﻿# Lubimyczytac Scraper to Goodreads Pipeline
+# Lubimyczytac Scraper to Goodreads Pipeline
 
 A Selenium-based data pipeline that reads a public Lubimyczytac profile library, enriches book records with per-book metadata, and exports a Goodreads-compatible CSV.
 
