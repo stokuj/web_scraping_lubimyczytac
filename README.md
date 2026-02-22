@@ -1,7 +1,33 @@
 # Lubimyczytac Scraper to Goodreads Pipeline
 
-A Selenium-based data pipeline that reads a public Lubimyczytac profile library, enriches book records with per-book metadata, and exports a Goodreads-compatible CSV.
+A Selenium-based data pipeline that reads a public Lubimyczytac profile library -> enriches book records with per-book metadata -> and exports a Goodreads-compatible CSV.
+Tested wit GitHub actions.
 
+## Project Structure
+
+```text
+.
+|-- data_io/
+|   |-- csv_utils.py         # CSV read/write and Goodreads export mapping
+|   `-- __init__.py
+|-- models/
+|   |-- book.py              # Book dataclass and CSV schema
+|   `-- __init__.py
+|-- scraper/
+|   |-- profile_scraper.py   # phase 1: list scraping from profile pages
+|   |-- enrichment.py        # phase 2: per-book enrichment orchestration
+|   |-- book_details.py      # phase 2: ISBN/original title extraction
+|   `-- __init__.py
+|-- dane/
+|   |-- books.csv            # phase 1 output
+|   |-- books_enriched.csv   # phase 2 output
+|   `-- goodreads.csv        # phase 3 output
+|-- tests/
+|-- main.py                  # pipeline entry point
+|-- config.example.ini       # link to user profile
+|-- pyproject.toml
+`-- LICENSE
+```
 ## Scope
 
 - Source: public Lubimyczytac profile library pages
@@ -12,32 +38,6 @@ A Selenium-based data pipeline that reads a public Lubimyczytac profile library,
 - Python 3
 - Selenium + ChromeDriver
 - uv (environment and dependency management)
-
-## Project Layout
-
-```text
-.
-|-- scraper/
-|   |-- profile_scraper.py   # phase 1: list scraping from profile pages
-|   |-- enrichment.py        # phase 2: per-book enrichment orchestration
-|   |-- book_details.py      # phase 2: ISBN/original title extraction
-|   `-- __init__.py
-|-- models/
-|   |-- book.py              # Book dataclass and CSV schema
-|   `-- __init__.py
-|-- data_io/
-|   |-- csv_utils.py         # CSV read/write and Goodreads export mapping
-|   `-- __init__.py
-|-- dane/
-|   |-- books.csv            # phase 1 output
-|   |-- books_enriched.csv   # phase 2 output
-|   `-- goodreads.csv        # phase 3 output
-|-- tests/
-|-- main.py                  # pipeline entry point
-|-- config.example.ini
-|-- pyproject.toml
-`-- LICENSE
-```
 
 ## Setup (uv)
 
@@ -57,10 +57,7 @@ uv sync
 
 ## Configuration & Running
 
-Create your local config.ini from the config.example.ini:
-
-
-Then edit `config.ini`:
+Rename exaple cofig and edit: `config.ini`:
 
 ```ini
 [settings]
@@ -124,11 +121,7 @@ uv run python main.py
 - Output file:
   - `dane/goodreads.csv`
 
-## Educational Purpose
-
-This project is intended for educational use only. It is designed to demonstrate web scraping workflow design, CSV data processing, and multi-phase data transformation in Python.
-
 ## License
-
+This project is intended for educational use only. It is designed to demonstrate web scraping workflow design, CSV data processing, and multi-phase data transformation in Python.
 This project is licensed under the MIT License. See `LICENSE` for details.
 
